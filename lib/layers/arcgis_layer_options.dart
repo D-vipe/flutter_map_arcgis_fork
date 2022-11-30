@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map/plugin_api.dart';
 import 'package:latlong2/latlong.dart';
+
 class PolygonOptions {
   final Color color;
   final double borderStrokeWidth;
@@ -18,6 +19,7 @@ class PolygonOptions {
     this.isFilled = false,
   });
 }
+
 class PolygonLineOptions {
   final Color color;
   final double borderStrokeWidth;
@@ -61,10 +63,9 @@ class AnimationsOptions {
   });
 }
 
-typedef ClusterWidgetBuilder = Widget Function(
-    BuildContext context, List<Marker> markers);
+typedef ClusterWidgetBuilder = Widget Function(BuildContext context, List<Marker> markers);
 
-class FeatureLayerOptions extends LayerOptions {
+class ArcGISLayerOptions {
   /// Cluster size
   final Size size;
 
@@ -114,16 +115,15 @@ class FeatureLayerOptions extends LayerOptions {
   /// Function to call when a Marker is tapped
   final void Function(dynamic attributes, LatLng location)? onTap;
 
-  FeatureLayerOptions(
-      this.url,
-      this.geometryType,{
+  ArcGISLayerOptions(
+    this.url,
+    this.geometryType, {
     this.size = const Size(30, 30),
     this.computeSize,
     this.anchor,
     this.maxClusterRadius = 80,
     this.animationsOptions = const AnimationsOptions(),
-    this.fitBoundsOptions =
-        const FitBoundsOptions(padding: EdgeInsets.all(12.0)),
+    this.fitBoundsOptions = const FitBoundsOptions(padding: EdgeInsets.all(12.0)),
     this.zoomToBoundsOnClick = true,
     this.centerMarkerOnClick = true,
     this.spiderfyCircleRadius = 40,
