@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/plugin_api.dart';
 import 'package:collection/collection.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
 import 'arcgis_layer_options.dart';
 import 'package:tuple/tuple.dart';
@@ -13,7 +14,20 @@ import 'dart:async';
 class ArcGisLayerWrapper extends StatelessWidget {
   final ArcGISLayerOptions options;
   final Stream stream;
-  const ArcGisLayerWrapper({Key? key, required this.options, required this.stream}) : super(key: key);
+  final bool clusterMarkers;
+  final Color? clusterColor;
+  final int? maxClusterRadius;
+  final Size? clusterIconSize;
+
+  const ArcGisLayerWrapper({
+    Key? key,
+    required this.options,
+    required this.stream,
+    this.clusterMarkers = false,
+    this.clusterColor,
+    this.maxClusterRadius,
+    this.clusterIconSize,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +36,10 @@ class ArcGisLayerWrapper extends StatelessWidget {
     return _ArcGISLayer(
       mapState: map,
       options: options,
+      clusterMarkers: clusterMarkers,
+      clusterColor: clusterColor,
+      maxClusterRadius: maxClusterRadius,
+      clusterIconSize: clusterIconSize,
       stream: stream,
     );
   }
@@ -30,9 +48,21 @@ class ArcGisLayerWrapper extends StatelessWidget {
 class _ArcGISLayer extends StatefulWidget {
   final FlutterMapState mapState;
   final ArcGISLayerOptions options;
+  final bool clusterMarkers;
+  final Color? clusterColor;
+  final int? maxClusterRadius;
+  final Size? clusterIconSize;
   final Stream stream;
 
-  _ArcGISLayer({required this.options, required this.mapState, required this.stream});
+  _ArcGISLayer({
+    required this.options,
+    required this.mapState,
+    required this.stream,
+    required this.clusterMarkers,
+    this.clusterColor,
+    this.maxClusterRadius,
+    this.clusterIconSize,
+  });
 
   @override
   State<StatefulWidget> createState() => __ArcGISLayerState();
@@ -426,7 +456,8 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
   }
 
   Widget _buildMarkers(BuildContext context) {
-    var elements = <Widget>[];
+    List<Widget> elements = [];
+    List<Marker> markers = [];
     if (features.isNotEmpty) {
       for (var markerOpt in features) {
         if (!(markerOpt is PolygonEsri)) {
@@ -440,24 +471,54 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
             continue;
           }
 
-          elements.add(
-            Positioned(
-              width: markerOpt.width,
-              height: markerOpt.height,
-              left: pixelPosX,
-              top: pixelPosY,
-              child: markerOpt.builder(context),
-            ),
-          );
+          debugPrint('MARKER OPT: ${markerOpt.toString()}');
+
+          if (widget.clusterMarkers) {
+            markers.add(markerOpt);
+          } else {
+            elements.add(
+              Positioned(
+                width: markerOpt.width,
+                height: markerOpt.height,
+                left: pixelPosX,
+                top: pixelPosY,
+                child: markerOpt.builder(context),
+              ),
+            );
+          }
         }
       }
     }
 
-    return Container(
-      child: Stack(
-        children: elements,
-      ),
-    );
+    return widget.clusterMarkers
+        ? MarkerClusterLayerWidget(
+            options: MarkerClusterLayerOptions(
+              maxClusterRadius: widget.maxClusterRadius ?? 45,
+              size: widget.clusterIconSize ?? Size(30, 30),
+              anchor: AnchorPos.align(AnchorAlign.center),
+              fitBoundsOptions: const FitBoundsOptions(
+                padding: EdgeInsets.all(50),
+                maxZoom: 15,
+              ),
+              markers: markers,
+              builder: (context, markers) {
+                return Container(
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: widget.clusterColor ?? Colors.blue),
+                  child: Center(
+                    child: Text(
+                      markers.length.toString(),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                );
+              },
+            ),
+          )
+        : Container(
+            child: Stack(
+              children: elements,
+            ),
+          );
   }
 
   Widget _buildPoygons(BuildContext context, Size size) {

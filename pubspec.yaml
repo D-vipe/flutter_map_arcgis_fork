@@ -15,6 +15,7 @@ dependencies:
   latlong2: ^0.8.1
   collection: ^1.16.0
   tuple: ^2.0.0
+  flutter_map_marker_cluster: ^1.0.1
 
 
 dev_dependencies:
