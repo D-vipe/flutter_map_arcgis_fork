@@ -69,6 +69,8 @@ class _ArcGISLayer extends StatefulWidget {
 }
 
 class __ArcGISLayerState extends State<_ArcGISLayer> {
+  FlutterMapState get _mapState => widget.mapState;
+
   List<dynamic> featuresPre = <dynamic>[];
   List<dynamic> features = <dynamic>[];
 
@@ -118,7 +120,7 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
   }
 
   void _resetView() async {
-    LatLngBounds mapBounds = widget.mapState.bounds;
+    LatLngBounds mapBounds = _mapState.bounds;
     if (currentBounds == null) {
       await doResetView(mapBounds);
     } else {
@@ -136,7 +138,7 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
       featuresPre = <dynamic>[];
       currentBounds = mapBounds;
     });
-    _setView(widget.mapState.center, widget.mapState.zoom);
+    _setView(_mapState.center, _mapState.zoom);
     _resetGrid();
     await genrateVirtualGrids();
   }
@@ -171,22 +173,30 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
   }
 
   bool _boundsContainsMarker(Marker marker) {
-    var pixelPoint = widget.mapState.project(marker.point);
+    var pxPoint = _mapState.project(marker.point);
 
-    final width = marker.width - marker.anchor.left;
-    final height = marker.height - marker.anchor.top;
+    // See if any portion of the Marker rect resides in the map bounds
+    // If not, don't spend any resources on build function.
+    // This calculation works for any Anchor position whithin the Marker
+    // Note that Anchor coordinates of (0,0) are at bottom-right of the Marker
+    // unlike the map coordinates.
+    final rightPortion = marker.width - marker.anchor.left;
+    final leftPortion = marker.anchor.left;
+    final bottomPortion = marker.height - marker.anchor.top;
+    final topPortion = marker.anchor.top;
 
-    var sw = CustomPoint(pixelPoint.x + width, pixelPoint.y - height);
-    var ne = CustomPoint(pixelPoint.x - width, pixelPoint.y + height);
-    return widget.mapState.pixelBounds.containsPartialBounds(Bounds(sw, ne));
+    final sw = CustomPoint(pxPoint.x + leftPortion, pxPoint.y - bottomPortion);
+    final ne = CustomPoint(pxPoint.x - rightPortion, pxPoint.y + topPortion);
+
+    return _mapState.pixelBounds.containsPartialBounds(Bounds(sw, ne));
   }
 
   Bounds _getTiledPixelBounds(LatLng center) {
-    return widget.mapState.getPixelBounds(_tileZoom!);
+    return _mapState.getPixelBounds(_tileZoom!);
   }
 
   void _resetGrid() {
-    var map = widget.mapState;
+    var map = _mapState;
     var crs = map.options.crs;
     var tileZoom = _tileZoom;
 
@@ -213,56 +223,66 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
 
   Future genrateVirtualGrids() async {
     if (widget.options.geometryType == "point") {
+      /// This generates way too many requests in a que. Either we need
+      /// to limit the que or try not to use it at all
       if (_tileZoom! <= 14) {
-        var pixelBounds = _getTiledPixelBounds(widget.mapState.center);
-        var tileRange = _pxBoundsToTileRange(pixelBounds);
+        // var pixelBounds = _getTiledPixelBounds(_mapState.center);
+        // var tileRange = _pxBoundsToTileRange(pixelBounds);
 
-        var queue = <Coords>[];
+        // var queue = <Coords>[];
 
         // mark tiles as out of view...
-        for (var key in _tiles.keys) {
-          var c = _tiles[key]!.coords;
-          if (c.z != _tileZoom) {
-            _tiles[key]!.current = false;
-          }
-        }
+        // for (var key in _tiles.keys) {
+        //   var c = _tiles[key]!.coords;
+        //   if (c.z != _tileZoom) {
+        //     _tiles[key]!.current = false;
+        //   }
+        // }
 
-        for (var j = tileRange.min.y; j <= tileRange.max.y; j++) {
-          for (var i = tileRange.min.x; i <= tileRange.max.x; i++) {
-            var coords = Coords(i.toDouble(), j.toDouble());
-            coords.z = _tileZoom!;
+        // for (var j = tileRange.min.y; j <= tileRange.max.y; j++) {
+        //   for (var i = tileRange.min.x; i <= tileRange.max.x; i++) {
+        //     var coords = Coords(i.toDouble(), j.toDouble());
+        //     coords.z = _tileZoom!;
 
-            if (!_isValidTile(coords)) {
-              continue;
-            }
-            // Add all valid tiles to the queue on Flutter
-            queue.add(coords);
-          }
-        }
-        if (queue.isNotEmpty) {
-          targetRequests = queue.length;
-          activeRequests = 0;
-          for (var i = 0; i < queue.length; i++) {
-            var coordsNew = _wrapCoords(queue[i]);
+        //     if (!_isValidTile(coords)) {
+        //       continue;
+        //     }
+        //     // Add all valid tiles to the queue on Flutter
+        //     queue.add(coords);
+        //   }
+        // }
 
-            var bounds = coordsToBounds(coordsNew);
-            await requestFeatures(bounds);
-          }
-        }
+        // if (queue.isNotEmpty) {
+        //   targetRequests = queue.length;
+        //   activeRequests = 0;
+        //   for (var i = 0; i < queue.length; i++) {
+        //     var coordsNew = _wrapCoords(queue[i]);
+
+        //     var bounds = coordsToBounds(coordsNew);
+        //     await requestFeatures(bounds);
+        //   }
+        // }
+
+        targetRequests = 1;
+        activeRequests = 1;
+        await requestFeatures(_mapState.bounds);
       } else {
         targetRequests = 1;
         activeRequests = 1;
-        await requestFeatures(widget.mapState.bounds);
+        await requestFeatures(_mapState.bounds);
       }
     } else {
       targetRequests = 1;
       activeRequests = 1;
-      await requestFeatures(widget.mapState.bounds);
+      await requestFeatures(_mapState.bounds);
     }
+    targetRequests = 1;
+    activeRequests = 1;
+    await requestFeatures(_mapState.bounds);
   }
 
   LatLngBounds coordsToBounds(Coords coords) {
-    var map = widget.mapState;
+    var map = _mapState;
     var cellSize = 256.0;
     var nwPoint = coords.multiplyBy(cellSize);
     var sePoint = CustomPoint(nwPoint.x + cellSize, nwPoint.y + cellSize);
@@ -272,7 +292,7 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
   }
 
   bool _isValidTile(Coords coords) {
-    var crs = widget.mapState.options.crs;
+    var crs = _mapState.options.crs;
     if (!crs.infinite) {
       var bounds = _globalTileRange;
       if ((crs.wrapLng == null && (coords.x < bounds!.min.x || coords.x > bounds.max.x)) || (crs.wrapLat == null && (coords.y < bounds!.min.y || coords.y > bounds.max.y))) {
@@ -282,9 +302,8 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
     return true;
   }
 
-  void getMapState() {}
-
   Future requestFeatures(LatLngBounds bounds) async {
+    debugPrint('FEATURES REQUESTED');
     try {
       String bounds_ = '"xmin":${bounds.southWest!.longitude},"ymin":${bounds.southWest!.latitude},"xmax":${bounds.northEast!.longitude},"ymax":${bounds.northEast?.latitude}';
 
@@ -406,13 +425,22 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
     // convert the point to global coordinates
     var localPoint = _offsetToPoint(offset);
     var localPointCenterDistance = CustomPoint((width / 2) - localPoint.x, (height / 2) - localPoint.y);
-    var mapCenter = widget.mapState.project(widget.mapState.center);
+    var mapCenter = _mapState.project(_mapState.center);
     var point = mapCenter - localPointCenterDistance;
-    return widget.mapState.unproject(point);
+    return _mapState.unproject(point);
   }
 
   CustomPoint _offsetToPoint(Offset offset) {
     return CustomPoint(offset.dx, offset.dy);
+  }
+
+  void _fillOffsets(final List<Offset> offsets, final List<LatLng> points) {
+    final len = points.length;
+    for (var i = 0; i < len; ++i) {
+      final point = points[i];
+      final offset = _mapState.getOffsetFromOrigin(point);
+      offsets.add(offset);
+    }
   }
 
   @override
@@ -434,7 +462,7 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
             builder: (BuildContext context, BoxConstraints bc) {
               // TODO unused BoxContraints should remove?
               final size = Size(bc.maxWidth, bc.maxHeight);
-              return _buildPoygonLines(context, size);
+              return _buildPolygonLines(context, size);
             },
           );
         },
@@ -447,7 +475,7 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
             builder: (BuildContext context, BoxConstraints bc) {
               // TODO unused BoxContraints should remove?
               final size = Size(bc.maxWidth, bc.maxHeight);
-              return _buildPoygons(context, size);
+              return _buildPolygons(context, size);
             },
           );
         },
@@ -461,8 +489,11 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
     if (features.isNotEmpty) {
       for (var markerOpt in features) {
         if (!(markerOpt is PolygonEsri)) {
-          var pos = widget.mapState.project(markerOpt.point);
-          pos = pos.multiplyBy(widget.mapState.getZoomScale(widget.mapState.zoom, widget.mapState.zoom)) - widget.mapState.pixelOrigin;
+          // Find the position of the point on the screen
+          var pos = _mapState.project(markerOpt.point);
+
+          // Consider zoom scale
+          pos = pos.multiplyBy(_mapState.getZoomScale(_mapState.zoom, _mapState.zoom)) - _mapState.pixelOrigin;
 
           var pixelPosX = (pos.x - (markerOpt.width - markerOpt.anchor.left)).toDouble();
           var pixelPosY = (pos.y - (markerOpt.height - markerOpt.anchor.top)).toDouble();
@@ -470,8 +501,6 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
           if (!_boundsContainsMarker(markerOpt)) {
             continue;
           }
-
-          debugPrint('MARKER OPT: ${markerOpt.toString()}');
 
           if (widget.clusterMarkers) {
             markers.add(markerOpt);
@@ -496,8 +525,8 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
               maxClusterRadius: widget.maxClusterRadius ?? 45,
               size: widget.clusterIconSize ?? Size(30, 30),
               anchor: AnchorPos.align(AnchorAlign.center),
-              fitBoundsOptions: const FitBoundsOptions(
-                padding: EdgeInsets.all(50),
+              fitBoundsOptions: FitBoundsOptions(
+                padding: _mapState.zoom <= 11 ? EdgeInsets.all(50) : EdgeInsets.all(30),
                 maxZoom: 15,
               ),
               markers: markers,
@@ -521,17 +550,41 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
           );
   }
 
-  Widget _buildPoygons(BuildContext context, Size size) {
+  Widget _buildPolygons(BuildContext context, Size size) {
     var elements = <Widget>[];
     if (features.isNotEmpty) {
       for (var polygon in features) {
         if (polygon is PolygonEsri) {
           polygon.offsets.clear();
+
+          // Copied from flutter_map polygon_layer builder
+          if (null != polygon.holeOffsetsList) {
+            for (final offsets in polygon.holeOffsetsList!) {
+              offsets.clear();
+            }
+          }
+
+          /// This is copied from flutter_map polygon_layer builder
+          /// consider adding param to ArcGISLayerWrapper to control this feature
+          if (!polygon.boundingBox.isOverlapping(_mapState.bounds)) {
+            // skip this polygon as it's offscreen
+            continue;
+          }
+
+          _fillOffsets(polygon.offsets, polygon.points);
+
+          if (null != polygon.holePointsList) {
+            final len = polygon.holePointsList!.length;
+            for (var i = 0; i < len; ++i) {
+              _fillOffsets(polygon.holeOffsetsList![i], polygon.holePointsList![i]);
+            }
+          }
+
           var i = 0;
 
           for (var point in polygon.points) {
-            var pos = widget.mapState.project(point);
-            pos = pos.multiplyBy(widget.mapState.getZoomScale(widget.mapState.zoom, widget.mapState.zoom)) - widget.mapState.pixelOrigin;
+            var pos = _mapState.project(point);
+            pos = pos.multiplyBy(_mapState.getZoomScale(_mapState.zoom, _mapState.zoom)) - _mapState.pixelOrigin;
             polygon.offsets.add(Offset(pos.x.toDouble(), pos.y.toDouble()));
             if (i > 0 && i < polygon.points.length) {
               polygon.offsets.add(Offset(pos.x.toDouble(), pos.y.toDouble()));
@@ -564,18 +617,27 @@ class __ArcGISLayerState extends State<_ArcGISLayer> {
     );
   }
 
-  Widget _buildPoygonLines(BuildContext context, Size size) {
+  Widget _buildPolygonLines(BuildContext context, Size size) {
     var elements = <Widget>[];
 
     if (features.isNotEmpty) {
       for (var polyLine in features) {
         if (polyLine is PolyLineEsri) {
           polyLine.offsets.clear();
+
+          // consider adding bool param to control this block
+          if (!polyLine.boundingBox.isOverlapping(_mapState.bounds)) {
+            // skip this polyline as it's offscreen
+            continue;
+          }
+
+          _fillOffsets(polyLine.offsets, polyLine.points);
+
           var i = 0;
 
           for (var point in polyLine.points) {
-            var pos = widget.mapState.project(point);
-            pos = pos.multiplyBy(widget.mapState.getZoomScale(widget.mapState.zoom, widget.mapState.zoom)) - widget.mapState.pixelOrigin;
+            var pos = _mapState.project(point);
+            pos = pos.multiplyBy(_mapState.getZoomScale(_mapState.zoom, _mapState.zoom)) - _mapState.pixelOrigin;
             polyLine.offsets.add(Offset(pos.x.toDouble(), pos.y.toDouble()));
             if (i > 0 && i < polyLine.points.length) {
               polyLine.offsets.add(Offset(pos.x.toDouble(), pos.y.toDouble()));
